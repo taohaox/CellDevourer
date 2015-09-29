@@ -2,7 +2,8 @@
 <resources>
 
     <string name="app_name">agar</string>
-    <string name="hello_world">Hello world!</string>
+    <string name="lock">&#xf023;</string>
+    <string name="search">&#xf002;</string>
     <string name="action_settings">Settings</string>
 
 </resources>

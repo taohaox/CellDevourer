@@ -2,6 +2,8 @@ package com.agar.domain;
 
 import java.util.List;
 
+import com.agar.activity.BattlegroundView2SurfaceView;
+
 import android.graphics.Canvas;
 import android.graphics.Point;
 import android.util.Log;
@@ -13,7 +15,11 @@ public class MyBall extends Ball{
 		super(x, y, r, xv, yv, alpha, red, green, blue);
 	}
 
-	
+	/**
+	 * 改变球的速度 方向和速度 
+	 * @param targetX   将要到达的xy
+	 * @param targetY
+	 */
 	public void chengeV(double targetX,double targetY){
 		double a = targetX-x;
 		double b =  targetY-y;
@@ -27,6 +33,22 @@ public class MyBall extends Ball{
 	public void move(){
 		x += xv;
 		y += yv;
+		
+		if(x+r>BattlegroundView2SurfaceView.GAME_WIDTH){
+			x = BattlegroundView2SurfaceView.GAME_WIDTH - r;
+			xv = 0;
+		}else if(x-r<0){
+			x = r;
+			xv = 0;
+		}
+		
+		if(y+r>BattlegroundView2SurfaceView.GAME_HEIGHT){
+			y = BattlegroundView2SurfaceView.GAME_HEIGHT - r;
+			yv = 0;
+		}else if(y-r<0){
+			y = r;
+			yv = 0;
+		}
 	}
 	@Override
 	public void onBallDraw(Canvas canvas, Point relativeScreenPoint) {
