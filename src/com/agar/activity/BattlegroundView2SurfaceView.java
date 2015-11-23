@@ -2,17 +2,24 @@ package com.agar.activity;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Typeface;
+import android.os.Handler;
+import android.os.Message;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -23,74 +30,93 @@ import android.view.WindowManager;
 
 import com.agar.domain.Ball;
 import com.agar.domain.MyBall;
+import com.agar.socket.SocketControl;
+import com.agar.socket.SocketControl.GetMsgHandler;
+import com.agar.util.Code;
+import com.alibaba.fastjson.JSONObject;
 
-public class BattlegroundView2SurfaceView extends SurfaceView implements android.view.SurfaceHolder.Callback {
+public class BattlegroundView2SurfaceView extends SurfaceView implements android.view.SurfaceHolder.Callback ,GetMsgHandler{
 
 	
 	private static final int BUTTON_SIZE = 65;
 	public static  int BUTTON_X ;//视角锁定按钮的 x坐标
 	public static  int BUTTON_Y = BUTTON_SIZE; //视角锁定按钮的 y坐标
-//	private static final int BITMAP_REVISE_HORIZONTAL = 25; //图片修正大小
-//	private static final int BITMAP_REVISE_VERTICAL = 23; //图片修正大小
 	private List<Ball> balls = new ArrayList<Ball>();
 	private Paint paint = new Paint();
-	public final static int GAME_WIDTH = 2000; // 游戏界面大小
-	public final static int GAME_HEIGHT = 2000;
-	private Random rand = new Random();
+	
 	private MyBall mBall; // 我的小球
 	private double screenWidth; // 屏幕宽度
 	private double screenHeight; // 屏幕高度
-
-	private double screenX; // 屏幕左上角的 x y
+			
+	//从服务器获取的游戏参数
+	public static int GAME_WIDTH = 0; // 游戏界面大小
+	public static int GAME_HEIGHT = 0;
+	private static int GAME_REFRESH_RATE;  //界面按每 GAME_REFRESH_RATE 毫秒刷新   
+	
+	
+	/**屏幕左上角的 x*/
+	private double screenX; 
+	/**屏幕左上角的 y*/
 	private double screenY;
 
 	private double startX;
 	private double startY;
 	
-	private double onclickX;
+	private double onclickX;  //点击的xy
 	private double onclickY;
-	
-//	private Bitmap bitmap;
-
-	
-	private Timer timer;
+	private Timer timer;     
 	private TimerTask task;
 	private String lock;   //锁定的图标
 	private String search;  //解锁的图标
 	private Typeface typeface;
 	private boolean isLock = false; //是否锁定视角
 	
+	public static boolean isLife = true;  //游戏是否存在   为false后接受不到服务器数据
+	
+	private SocketControl control = SocketControl.getInstance();
+	private Context context;
+	
+	private Map<Long,MyBall> mballs = new ConcurrentHashMap<>();
+	
+	public static final int SHOW_DIALOG = 0;
+	private Handler handler = new Handler(){
+		@Override
+		public void handleMessage(Message msg) {
+			switch (msg.what) {
+			case SHOW_DIALOG:
+				new AlertDialog.Builder(getContext()).setTitle("提示").setMessage("游戏结束")
+				.setPositiveButton("重玩", new DialogInterface.OnClickListener() {
+				@Override
+				public void onClick(DialogInterface dialog, int which) {
+					isLife = true;
+					sendGameInfo(Code.GAME_STATUS_START);
+				}
+				} ).setNegativeButton("退出", new DialogInterface.OnClickListener(){
+				@Override
+				public void onClick(DialogInterface dialog, int which) {
+					System.exit(0);  
+				}
+			}).show();
+				break;
+			default:
+				break;
+			}
+			
+		}
+	};
 
 	@SuppressLint("ClickableViewAccessibility")
 	public BattlegroundView2SurfaceView(Context context, AttributeSet attrs) {
 		super(context, attrs);
-		showText("create"," BattlegroundView(Context context, AttributeSet attrs) ");
+		this.context = context;
 		getHolder().addCallback(this);
-		for (int i = 0; i < 500; i++) {
-			balls.add(new Ball(rand.nextInt(GAME_WIDTH), rand.nextInt(GAME_HEIGHT), 10, 0,	0, 255, rand.nextInt(255), rand.nextInt(255), rand.nextInt(255)));
-		}
-		mBall = new MyBall(300, 500, 30, 0, 0, 255, 12, 158, 255);
-		WindowManager manager = (WindowManager) context
-				.getSystemService(Context.WINDOW_SERVICE);
-		Point p = new Point();
-		manager.getDefaultDisplay().getSize(p);
-		screenWidth = p.x;
-		screenHeight = p.y;
-		//按钮所在是x
-		BUTTON_X = (int) (screenWidth-1.2*BUTTON_SIZE);
-		initShowRange();
-		//设置图形字体
-		lock = getResources().getString(R.string.lock);
-		search = getResources().getString(R.string.search);
-		typeface = Typeface.createFromAsset(getResources().getAssets(), "fontawesome-webfont.ttf");
-		paint.setColor(0xff12aaff);
-		paint.setTypeface(typeface);
-		paint.setTextSize(BUTTON_SIZE);
-		
 		this.setOnTouchListener(new OnTouchListener() {
 			
 			@Override
 			public boolean onTouch(View v, MotionEvent event) {
+				if(mBall==null){
+					return true;
+				}
                 switch(event.getAction()){  
                 case MotionEvent.ACTION_DOWN:  
                     System.out.println("---action down-----");  
@@ -131,14 +157,25 @@ public class BattlegroundView2SurfaceView extends SurfaceView implements android
                     		}
                     	}else{
                     		mBall.chengeV(event.getX()+screenX, event.getY()+screenY);
+                    		sendGameInfo(Code.GAME_CHANGEV);
                     	}
-                    	
                     }
                 }  
                 return true;  
 			}
 		});
 		
+	}
+	/**
+	 * 得到屏幕宽高
+	 * @param context
+	 */
+	public void getScreenInfo(Context context) {
+		WindowManager manager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+		Point p = new Point();
+		manager.getDefaultDisplay().getSize(p);
+		screenWidth = p.x;
+		screenHeight = p.y;
 	}
 	public BattlegroundView2SurfaceView(Context context) {
 		this(context,null);
@@ -164,19 +201,58 @@ public class BattlegroundView2SurfaceView extends SurfaceView implements android
 				Ball ball = balls.get(i);
 				if(checkRange(ball)){
 					ball.onBallDraw(canvas,	getRelativePoint(ball, screenX, screenY));
-					if(mBall.checkDevour(ball)){
-						balls.remove(ball);
-					}
 				}
+				checkPlayerEatBall(canvas, ball);
 			}
-				
-			mBall.onBallDraw(canvas, getRelativePoint(mBall, screenX, screenY));
+			playerDraw(canvas);
+			checkPlayerEatOtherPlayer();
 			drawBoundary(canvas);//画边界
 			//锁定视角
 			if(isLock){
 				initShowRange();
 			}
 			getHolder().unlockCanvasAndPost(canvas);
+		}
+	}
+	private void checkPlayerEatOtherPlayer() {
+		for(Entry<Long,MyBall> e:mballs.entrySet()){
+			for(Entry<Long,MyBall> e2:mballs.entrySet()){
+				if(e.getValue()!=e2.getValue()){
+					MyBall m;
+					if((m =e.getValue().checkDevour(e2.getValue()))!=null){
+						mballs.remove(m.getId());
+						if(m.getId()==mBall.getId()){
+							stopTimerTask();
+						}
+					}
+				}
+			}
+			
+			
+		}
+	}
+	/**
+	 * 判断玩家是否吞球
+	 * @param canvas
+	 * @param ball
+	 */
+	public void checkPlayerEatBall(Canvas canvas, Ball ball) {
+		Set<Entry<Long,MyBall>> entrySet = mballs.entrySet();
+		for(Entry<Long,MyBall> e:entrySet){
+			if(e.getValue().checkDevour(ball)){
+				balls.remove(ball);
+			}
+		}
+	}
+	/**
+	 * 显示玩家
+	 * @param canvas
+	 * @param ball
+	 */
+	public void playerDraw(Canvas canvas) {
+		Set<Entry<Long,MyBall>> entrySet = mballs.entrySet();
+		for(Entry<Long,MyBall> e:entrySet){
+			e.getValue().onBallDraw(canvas, getRelativePoint(e.getValue(), screenX, screenY));
 		}
 	}
 	/**
@@ -221,15 +297,16 @@ public class BattlegroundView2SurfaceView extends SurfaceView implements android
 	}
 
 	public void startTimerTask(){
-		timer = new Timer();
-		task = new TimerTask() {
-			
-			@Override
-			public void run() {
-				draw();
-			}
-		};
-		timer.schedule(task, 15,15);
+		if(timer==null){
+			timer = new Timer();
+			task = new TimerTask() {
+				@Override
+				public void run() {
+					draw();
+				}
+			};
+			timer.schedule(task, 0,GAME_REFRESH_RATE);
+		}
 	}
 	public void stopTimerTask(){
 		if(timer!=null){
@@ -244,12 +321,41 @@ public class BattlegroundView2SurfaceView extends SurfaceView implements android
 	@Override
 	public void surfaceCreated(SurfaceHolder holder) {
 		Log.e("123", "surfaceCreated");
-		startTimerTask();
+		isLife = true;
+		sendGameInfo(Code.GAME_STATUS_START);
+		control.setHandler(this); //监听服务器返回数据的回调
+		getScreenInfo(context);//得到屏幕宽高
+		//按钮所在是x
+		BUTTON_X = (int) (screenWidth-1.2*BUTTON_SIZE);
+		//设置图形字体
+		lock = getResources().getString(R.string.lock);
+		search = getResources().getString(R.string.search);
+		typeface = Typeface.createFromAsset(getResources().getAssets(), "fontawesome-webfont.ttf");
+		paint.setColor(0xff12aaff);
+		paint.setTypeface(typeface);
+		paint.setTextSize(BUTTON_SIZE);
 	}
 	@Override
 	public void surfaceDestroyed(SurfaceHolder holder) {
 		Log.e("123", "surfaceDestroyed");
 		stopTimerTask();
+		isLife = false;
+		sendGameInfo(Code.GAME_STATUS_OVER);
+		System.exit(0);
+	}
+	
+	/**
+	 * 发送游戏状态给服务器
+	 * @param gameStatus
+	 */
+	public void sendGameInfo(int gameStatus) {
+		if(gameStatus==Code.GAME_STATUS_START){
+			control.sendMsgToServer("GAME_START",Code.GAME_STATUS_START);
+		}else if(gameStatus==Code.GAME_STATUS_OVER){
+			control.sendMsgToServer(JSONObject.toJSONString(mBall),Code.GAME_STATUS_OVER);
+		}else if(gameStatus == Code.GAME_CHANGEV ){
+			control.sendMsgToServer(JSONObject.toJSONString(mBall),Code.GAME_CHANGEV);
+		}
 	}
 	/**
 	 * 画边界
@@ -290,6 +396,52 @@ public class BattlegroundView2SurfaceView extends SurfaceView implements android
 			}else if(screenX>GAME_WIDTH-screenWidth&&screenX<GAME_WIDTH){
 				canvas.drawLine((int)(0), (int)(GAME_HEIGHT-screenY), (int)(screenWidth-(screenX-GAME_WIDTH+screenWidth)), (int)(GAME_HEIGHT-screenY), paint);
 			}
+		}
+	}
+	/**
+	 * 处理服务器返回的数据
+	 */
+	@Override
+	public void handlerMsg(String result) {
+//		Result<String> obj = JSONObject.parseObject(result, Result.class);
+		JSONObject obj = JSONObject.parseObject(result);
+		int status = obj.getInteger("status");
+		String data = obj.getString("data");
+		if(status==Code.GAME_STATUS_START){//游戏开始  服务器分配账号
+			//startTimerTask();
+		}else if(status==Code.GAME_STATUS_MY_INFO){ //得到个人的位置坐标
+			mBall = JSONObject.parseObject(data,MyBall.class);
+			GAME_WIDTH = obj.getInteger("GAME_WIDTH");
+			GAME_HEIGHT = obj.getInteger("GAME_HEIGHT");
+			GAME_REFRESH_RATE = obj.getInteger("GAME_REFRESH_RATE");
+			initShowRange();//球居中显示
+			startTimerTask();
+		}else if(status==Code.GAME_STATUS_USER_INFO){  //得到所有人的位置坐标
+			if(obj.getJSONObject("data").size()==0){
+				return;
+			}
+			for(Entry<String, Object> e: obj.getJSONObject("data").entrySet()){
+				if(e.getValue()==null){
+					return;
+				}
+				MyBall otherball = JSONObject.parseObject(e.getValue().toString(), MyBall.class); 
+				mballs.put(Long.parseLong(e.getKey()), otherball);
+				if(mBall==null||otherball.getId()==mBall.getId()){
+					mBall = otherball;
+				}
+			}
+//			initShowRange();//球居中显示
+//			startTimerTask();
+		}else if(status==Code.GAME_STATUS_BALL_INFO){  //得到所有食物的位置坐标
+			balls = JSONObject.parseArray(data,Ball.class);
+		}else if(status==Code.GAME_CHANGEV){
+			mBall = JSONObject.parseObject(data,MyBall.class);
+		}else if(status == Code.GAME_STATUS_OVER){
+			stopTimerTask();
+			isLife = false;
+			Message message = new Message();
+			message.what = SHOW_DIALOG;
+			handler.sendMessage(message);
 		}
 	}
 }

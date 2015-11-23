@@ -1,23 +1,20 @@
 package com.agar.domain;
 
+import java.io.Serializable;
 import java.util.Random;
 
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Point;
-import android.util.Log;
 
-public class Ball {
-	private Bitmap bitmap;
+public class Ball implements Serializable{
 	public double x = 0;
 	public double y = 0;
 	public double r = 10;
 	public double v = 5;
 	public double xv = 0;
 	public double yv = 0;
-	public Thread mThread ;
 	public int alpha = 255;
 	public int red = 0;
 	public int green = 0;
@@ -26,7 +23,10 @@ public class Ball {
 	public Color color = new Color();
 	public Random rand = new Random();
 	public double size ; //小球的面积
-	
+	public Ball() {
+		super();
+		setRandomColor();
+	}
 	public Ball(int x, int y, int r, int xv, int yv, int alpha, int red,
 			int green, int blue) {
 		super();
